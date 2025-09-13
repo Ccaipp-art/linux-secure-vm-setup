@@ -1,25 +1,22 @@
 #!/usr/bin/env bash
-# Configuration UFW basique
-
 set -Eeuo pipefail
+: "${SSH_PORT:=22}"
+log(){ echo "[UFW] $*"; }
 
-log() { echo "[UFW] $*"; }
-
-log "Réinitialisation des règles"
+log "Reset des règles"
 ufw --force reset
 
-log "Politique par défaut : deny incoming / allow outgoing"
+log "Politiques par défaut"
 ufw default deny incoming
 ufw default allow outgoing
 
-log "Ouverture SSH (port 22)"
-ufw allow 22/tcp
+log "Autoriser SSH ${SSH_PORT}/tcp"
+ufw allow "${SSH_PORT}"/tcp
 
-# Exemple si tu veux autoriser HTTP/HTTPS plus tard :
+# (décommente au besoin)
 # ufw allow 80/tcp
 # ufw allow 443/tcp
 
-log "Activation du firewall"
+log "Activer UFW"
 ufw --force enable
-
-log "✅ UFW configuré"
+log "✅ UFW actif"

@@ -1,0 +1,17 @@
+# Configuration SSH sécurisée
+Port 22
+Protocol 2
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no
+AllowTcpForwarding no
+AllowAgentForwarding no
+PrintMotd no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+MaxAuthTries 3
+LoginGraceTime 30

@@ -182,6 +182,22 @@ Ce projet est aussi un **guide d’apprentissage** :
 
 ---
 
+---
+
+## 📝 Vérification post-installation
+
+Pour vous aider à vérifier que tout est bien installé et configuré,  
+vous pouvez utiliser la **checklist interactive** directement sur GitHub :
+
+➡️ [Vérification post-install (base)](../../issues/new?template=post-install-checklist.md)
+
+Cette checklist vous guidera étape par étape pour valider :
+- Connexion SSH avec le nouvel utilisateur,
+- Firewall UFW actif,
+- Durcissement SSH,
+- Node Exporter en service.
+
+
 ## 👤 Auteur
 
 Projet créé par **Théo FRANÇOIS** – Administrateur Systèmes & Réseaux (Linux & Sécurité).

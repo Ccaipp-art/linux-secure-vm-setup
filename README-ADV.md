@@ -189,6 +189,18 @@ hardening/
 
 ---
 
+## 📝 Vérification post-installation (avancé)
+
+Utilisez la **checklist interactive** sur GitHub pour valider la configuration durcie :
+
+➡️ [Vérification post-install (avancé)](../../issues/new?template=post-install-checklist-advanced.md)
+
+Cette checklist couvre :
+- Base (SSH, UFW, Node Exporter),
+- Sécurité avancée (fail2ban, unattended-upgrades, auditd, bannières, sysctl).
+
+---
+
 ## 🛠️ Améliorations futures possibles
 
 * `logwatch` → recevoir des rapports quotidiens par mail.

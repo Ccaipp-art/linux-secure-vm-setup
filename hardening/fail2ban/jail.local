@@ -1,0 +1,12 @@
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 3
+ignoreip = 127.0.0.1/8
+
+[sshd]
+enabled  = true
+port     = ssh
+filter   = sshd
+backend  = systemd
+logpath  = %(sshd_log)s

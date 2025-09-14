@@ -122,6 +122,52 @@ phase_3_ufw() {
   log "✅ Étape 3 OK"
 }
 
+# ---------- Étape 4 : Sécurité avancée (fail2ban, unattended, auditd, sysctl, bannières) ----------
+phase_4_security() {
+  log "Installation sécurité avancée"
+
+  apt-get update -y
+  apt-get install -y --no-install-recommends fail2ban unattended-upgrades auditd logwatch
+
+  # Unattended Upgrades
+  if [[ -f "./hardening/unattended/50unattended-upgrades" ]]; then
+    install -m 644 "./hardening/unattended/50unattended-upgrades" /etc/apt/apt.conf.d/50unattended-upgrades
+  fi
+  if [[ -f "./hardening/unattended/20auto-upgrades" ]]; then
+    install -m 644 "./hardening/unattended/20auto-upgrades" /etc/apt/apt.conf.d/20auto-upgrades
+  fi
+  systemctl enable --now unattended-upgrades || true
+
+  # Fail2ban
+  if [[ -f "./hardening/fail2ban/jail.local" ]]; then
+    install -m 644 "./hardening/fail2ban/jail.local" /etc/fail2ban/jail.local
+  fi
+  systemctl enable --now fail2ban
+
+  # Auditd
+  if [[ -f "./hardening/auditd/audit.rules" ]]; then
+    install -m 640 "./hardening/auditd/audit.rules" /etc/audit/rules.d/hardening.rules
+    augenrules --load || true
+  fi
+  systemctl enable --now auditd
+
+  # Bannières
+  if [[ -f "./hardening/banners/issue" ]]; then
+    install -m 644 "./hardening/banners/issue" /etc/issue
+  fi
+  if [[ -f "./hardening/banners/motd" ]]; then
+    install -m 644 "./hardening/banners/motd" /etc/motd
+  fi
+
+  # Sysctl
+  if [[ -f "./hardening/sysctl/99-hardening.conf" ]]; then
+    install -m 644 "./hardening/sysctl/99-hardening.conf" /etc/sysctl.d/99-hardening.conf
+    sysctl --system || true
+  fi
+
+  log "✅ Étape 4 OK"
+}
+
 # ---------- Étape 5 : Monitoring ----------
 phase_5_monitoring() {
   log "Installation Node Exporter (monitoring)"

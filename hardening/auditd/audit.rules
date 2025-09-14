@@ -1,0 +1,9 @@
+# Règles minimales d'exemple
+-D
+-b 8192
+-w /etc/passwd -p wa -k identity
+-w /etc/group  -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/sudoers -p wa -k scope
+-w /var/log/ -p wa -k logs
+-a always,exit -F arch=b64 -S execve -k exec

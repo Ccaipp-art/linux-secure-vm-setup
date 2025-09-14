@@ -189,11 +189,13 @@ main(){
     1) phase_1_basics ;;
     2) phase_2_user_ssh ;;
     3) phase_3_ufw ;;
+    4) phase_4_security
     5) phase_5_monitoring ;;
     all)
       phase_1_basics
       phase_2_user_ssh
       phase_3_ufw
+      phase_4_security
       phase_5_monitoring
       ;;
     *)

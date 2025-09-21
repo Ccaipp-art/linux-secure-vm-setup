@@ -13,7 +13,7 @@ ufw default deny incoming
 ufw default allow outgoing
 
 log "Ouverture SSH (port 22)"
-ufw allow 22/tcp
+ufw allow $(SSH_PORT)
 
 # Exemple si tu veux autoriser HTTP/HTTPS plus tard :
 # ufw allow 80/tcp

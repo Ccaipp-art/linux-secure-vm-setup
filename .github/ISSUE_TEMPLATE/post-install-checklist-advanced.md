@@ -50,10 +50,10 @@ assignees: ''
 
 ## 🐞 Problèmes rencontrés (optionnel)
 
-* Logs utiles :
+Logs utiles :
 
-  ```
-  /var/log/fail2ban.log
-  /var/log/unattended-upgrades/
-  journalctl -u ssh -u ufw -u auditd -u fail2ban -u node_exporter --no-pager --since "today"
-  ```
+```
+/var/log/fail2ban.log
+/var/log/unattended-upgrades/
+journalctl -u ssh -u ufw -u auditd -u fail2ban -u node_exporter --no-pager --since "today"
+```

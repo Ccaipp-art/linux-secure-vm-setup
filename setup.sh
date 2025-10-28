@@ -1,66 +1,210 @@
 #!/usr/bin/env bash
-# Étape 1 : mise à jour système + outils de base
-# Usage : sudo bash setup.sh 1    (ou simplement sudo ./setup.sh 1)
+# Setup AIS - VM Linux opérationnelle (Debian/Ubuntu)
+# Usage le plus simple : sudo ./setup.sh        (enchaîne tout)
+# Usage avancé : sudo NEW_USER=aisadmin SSH_PORT=22 ./setup.sh all
 
 set -Eeuo pipefail
 
-require_root() {
-  if [[ "${EUID}" -ne 0 ]]; then
-    echo "❌ Ce script doit être lancé avec sudo/root."
-    exit 1
-  fi
+# ---------- Utils ----------
+log(){ printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"; }
+require_root(){ [[ $EUID -eq 0 ]] || { echo "❌ Lance avec sudo/root"; exit 1; }; }
+check_apt(){ command -v apt-get >/dev/null || { echo "❌ apt-get introuvable (Debian/Ubuntu attendu)"; exit 1; }; }
+
+# Options personnalisables (surchargées par variables d'env)
+: "${NEW_USER:=aisadmin}"
+: "${SSH_PORT:=22}"
+: "${TIMEZONE:=Europe/Paris}"
+
+authorized_keys_has_key(){
+  local f="$1"
+  [[ -s "$f" ]] && grep -E -q 'ssh-(rsa|ed25519)|ecdsa-' "$f"
 }
 
-log() { printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"; }
-
-check_apt() {
-  if ! command -v apt-get >/dev/null 2>&1; then
-    echo "❌ Distribution non supportée (attendu: Debian/Ubuntu avec apt-get)."
-    exit 1
-  fi
-}
-
+# ---------- Étape 1 : base système ----------
 phase_1_basics() {
   export DEBIAN_FRONTEND=noninteractive
 
   log "Mise à jour des index APT"
   apt-get update -y
 
-  log "Mise à niveau du système (packages)"
+  log "Mise à niveau du système"
   apt-get upgrade -y
 
-  log "Installation des outils de base"
+  log "Outils de base"
   apt-get install -y --no-install-recommends \
     ca-certificates curl wget gnupg lsb-release \
     git vim nano htop tree zip unzip tar rsync jq \
-    net-tools iproute2 dnsutils openssh-client \
+    net-tools iproute2 dnsutils openssh-client openssh-server \
     software-properties-common tmux
 
-  log "Configuration de l'heure (Europe/Paris) & NTP"
-  timedatectl set-timezone Europe/Paris || true
+  log "Fuseau horaire & NTP"
+  timedatectl set-timezone "$TIMEZONE" || true
   timedatectl set-ntp true || true
 
-  log "Infos système rapides"
+  log "Infos rapides"
   lsb_release -a || true
   uname -r || true
-
-  log "✅ Étape 1 terminée."
-  echo "Prochaines étapes (seront ajoutées dans ce script plus tard) :"
-  echo " 2) Utilisateur + SSH hardening"
-  echo " 3) UFW (pare-feu)"
-  echo " 4) Sécurité (fail2ban, unattended-upgrades, logwatch)"
-  echo " 5) Monitoring (node_exporter)"
+  log "✅ Étape 1 OK"
 }
 
-main() {
+# ---------- Étape 2 : utilisateur + SSH ----------
+phase_2_user_ssh() {
+  log "Création utilisateur '${NEW_USER}' + durcissement SSH"
+
+  # 1) Créer l'utilisateur si besoin
+  if ! id "$NEW_USER" >/dev/null 2>&1; then
+    adduser --disabled-password --gecos "" "$NEW_USER"
+    usermod -aG sudo "$NEW_USER"
+  else
+    log "Utilisateur déjà présent"
+  fi
+
+  # 2) Préparer ~/.ssh
+  install -d -m 700 "/home/${NEW_USER}/.ssh"
+  touch "/home/${NEW_USER}/.ssh/authorized_keys"
+  chown -R "${NEW_USER}:${NEW_USER}" "/home/${NEW_USER}/.ssh"
+  chmod 600 "/home/${NEW_USER}/.ssh/authorized_keys"
+
+  # Option pratique : si root possède des clés, on les copie
+  if [[ -f /root/.ssh/authorized_keys ]]; then
+    log "Copie des clés root vers ${NEW_USER} (si présentes)"
+    cat /root/.ssh/authorized_keys >> "/home/${NEW_USER}/.ssh/authorized_keys" || true
+    sort -u "/home/${NEW_USER}/.ssh/authorized_keys" -o "/home/${NEW_USER}/.ssh/authorized_keys"
+  fi
+
+  # 3) Déployer sshd_config sécurisé (si présent dans le repo)
+  if [[ -f "./hardening/ssh_config" ]]; then
+    cp -a /etc/ssh/sshd_config "/etc/ssh/sshd_config.bak.$(date +%s)" || true
+    install -m 644 "./hardening/ssh_config" /etc/ssh/sshd_config
+  fi
+
+  # Appliquer/forcer le port voulu
+  if grep -q '^[# ]*Port ' /etc/ssh/sshd_config; then
+    sed -i "s/^[# ]*Port .*/Port ${SSH_PORT}/" /etc/ssh/sshd_config
+  else
+    echo "Port ${SSH_PORT}" >> /etc/ssh/sshd_config
+  fi
+
+  # ⚠️ Ne désactive l'auth par mot de passe que si une clé est présente
+  if authorized_keys_has_key "/home/${NEW_USER}/.ssh/authorized_keys"; then
+    sed -i 's/^[# ]*PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -i 's/^[# ]*PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/^[# ]*PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
+    log "Auth par mot de passe désactivée (clé détectée)."
+  else
+    sed -i 's/^[# ]*PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/^[# ]*PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/^[# ]*PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+    log "⚠️ Aucune clé détectée pour ${NEW_USER} → PasswordAuthentication laissé à YES pour éviter le lockout."
+    log "   Ajoute une clé dans /home/${NEW_USER}/.ssh/authorized_keys puis repasse à no."
+  fi
+
+  systemctl restart ssh
+  log "✅ Étape 2 OK — connexion: ssh ${NEW_USER}@<IP_VM> -p ${SSH_PORT}"
+}
+
+# ---------- Étape 3 : UFW ----------
+phase_3_ufw() {
+  log "Pare-feu UFW"
+  apt-get install -y --no-install-recommends ufw
+
+  if [[ -x "./hardening/ufw_rules.sh" ]]; then
+    SSH_PORT="${SSH_PORT}" ./hardening/ufw_rules.sh
+  else
+    ufw --force reset
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow "${SSH_PORT}"/tcp
+    ufw --force enable
+  fi
+
+  ufw status verbose || true
+  log "✅ Étape 3 OK"
+}
+
+# ---------- Étape 4 : Sécurité avancée (fail2ban, unattended, auditd, sysctl, bannières) ----------
+phase_4_security() {
+  log "Installation sécurité avancée"
+
+  apt-get update -y
+  apt-get install -y --no-install-recommends fail2ban unattended-upgrades auditd logwatch
+
+  # Unattended Upgrades
+  if [[ -f "./hardening/unattended/50unattended-upgrades" ]]; then
+    install -m 644 "./hardening/unattended/50unattended-upgrades" /etc/apt/apt.conf.d/50unattended-upgrades
+  fi
+  if [[ -f "./hardening/unattended/20auto-upgrades" ]]; then
+    install -m 644 "./hardening/unattended/20auto-upgrades" /etc/apt/apt.conf.d/20auto-upgrades
+  fi
+  systemctl enable --now unattended-upgrades || true
+
+  # Fail2ban
+  if [[ -f "./hardening/fail2ban/jail.local" ]]; then
+    install -m 644 "./hardening/fail2ban/jail.local" /etc/fail2ban/jail.local
+  fi
+  systemctl enable --now fail2ban
+
+  # Auditd
+  if [[ -f "./hardening/auditd/audit.rules" ]]; then
+    install -m 640 "./hardening/auditd/audit.rules" /etc/audit/rules.d/hardening.rules
+    augenrules --load || true
+  fi
+  systemctl enable --now auditd
+
+  # Bannières
+  if [[ -f "./hardening/banners/issue" ]]; then
+    install -m 644 "./hardening/banners/issue" /etc/issue
+  fi
+  if [[ -f "./hardening/banners/motd" ]]; then
+    install -m 644 "./hardening/banners/motd" /etc/motd
+  fi
+
+  # Sysctl
+  if [[ -f "./hardening/sysctl/99-hardening.conf" ]]; then
+    install -m 644 "./hardening/sysctl/99-hardening.conf" /etc/sysctl.d/99-hardening.conf
+    sysctl --system || true
+  fi
+
+  log "✅ Étape 4 OK"
+}
+
+# ---------- Étape 5 : Monitoring ----------
+phase_5_monitoring() {
+  log "Installation Node Exporter (monitoring)"
+  if [[ -x "./monitoring/install_node_exporter.sh" ]]; then
+    ./monitoring/install_node_exporter.sh
+  else
+    log "Script monitoring manquant — étape sautée."
+  fi
+  log "✅ Étape 5 OK"
+}
+
+# ---------- Orchestrateur ----------
+main(){
   require_root
   check_apt
 
-  PHASE="${1:-1}"
-
-  case "${PHASE}" in
+  local cmd="${1:-all}"
+  case "$cmd" in
     1) phase_1_basics ;;
-    *) echo "Usage: sudo ./setup.sh 1   # (seule l'étape 1 est dispo pour l'instant)"; exit 2 ;;
+    2) phase_2_user_ssh ;;
+    3) phase_3_ufw ;;
+    4) phase_4_security ;;
+    5) phase_5_monitoring ;;
+    all)
+      phase_1_basics
+      phase_2_user_ssh
+      phase_3_ufw
+      phase_4_security
+      phase_5_monitoring
+      ;;
+    *)
+      echo "Usage:"
+      echo "  sudo ./setup.sh            # tout (1+2+3+5)"
+      echo "  sudo ./setup.sh 1|2|3|5    # phase isolée"
+      echo "  sudo NEW_USER=alice SSH_PORT=22 ./setup.sh all"
+      exit 2
+      ;;
   esac
 }
 
